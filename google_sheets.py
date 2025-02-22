@@ -4,7 +4,7 @@ import os
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from oauth2client.service_account import ServiceAccountCredentials
 
 # === SETTING UP ===
@@ -13,7 +13,7 @@ SERVICE_ACCOUNT_FILE = 'C:/Users/Gustavo Cunha/Downloads/wired-height-451613-b4-
 
 # Scopes define the level of access the application has to Google Sheets and Google Drive.
 SCOPES_SHEETS = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file']
-SCOPES_DRIVE = ['https://www.googleapis.com/auth/drive.readonly']
+SCOPES_DRIVE = ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file']
 
 # === CONNECTION AND AUTHENTICATION WITH GOOGLE SHEETS ===
 # Authenticate using the service account credentials and authorize the client for Google Sheets.
@@ -87,11 +87,13 @@ def download_file(file_id, file_name, destination_folder):
 
 # === MAIN LOGIC TO DOWNLOAD ALL PDF FILES FROM A FOLDER ===
 # ID of the Google Drive folder containing the PDF files.
-folder_id = '1ngPkxMzO0SEdsqNn2yRuj_kxLjAazRmk'  # Replace with the actual folder ID.
+folder_id = '1ngPkxMzO0SEdsqNn2yRuj_kxLjAazRmk'  # Replace with the actual folder ID. THE GOOGLE DRIVERS FOLDER HAS TO BE SHARED WITH THE 
+# GOOGLE CLOUD SERVICE CLIENT E-MAIL
+# THIS IS THE INPUT FOR THE SOFTWARE (USERS INPUT FOR A EVENTUAL GUI)
 
 # Local directory where the downloaded PDF files will be saved.
-# This directory will also be used in SECTION 2 to process the PDF files.
-pdf_directory = "C:/Users/Gustavo Cunha/Downloads/PDFs"  # Replace with your desired local folder path.
+pdf_directory = "C:/Users/Gustavo Cunha/Downloads/Automation_PDFs"  # Replace with your desired local folder path.
+# THIS IS THE INPUT FOR THE SOFTWARE (USERS INPUT FOR A EVENTUAL GUI)
 
 # Create the destination folder if it doesn't exist.
 if not os.path.exists(pdf_directory):
@@ -177,11 +179,46 @@ for pdf_file in sorted(pdf_files):  # Sort files alphabetically to maintain chro
         if global_end_date is None or end_date > global_end_date:
             global_end_date = end_date
 
-# Display the final global balance and period after processing all PDF files.
-if global_start_date and global_end_date:
-    print("\n================= FINAL REPORT =================")
-    print(f"Entire period analyzed: {global_start_date} to {global_end_date}")
-    print(f"Global final balance: ${total_balance:,.2f}")
-    print("===================================================")
-else:
-    print("\n[ERROR] The global final balance could not be calculated.")
+
+# SECTION 3: CREATE A NEW SPREADSHEET AND WRITE RESULTS
+
+# Create a new spreadsheet and write the results.
+def create_spreadsheet_and_write_results(folder_id, global_start_date, global_end_date, total_balance):
+    """
+    Creates a new spreadsheet in the specified Google Drive folder and writes the results.
+    :param folder_id: ID of the Google Drive folder where the spreadsheet will be created.
+    :param global_start_date: Start date of the entire period analyzed.
+    :param global_end_date: End date of the entire period analyzed.
+    :param total_balance: Global final balance calculated.
+    """
+    try:
+        # Create a new spreadsheet.
+        spreadsheet_metadata = {
+            'name': 'Global_Balance_Report',
+            'mimeType': 'application/vnd.google-apps.spreadsheet',
+            'parents': [folder_id]
+        }
+        spreadsheet = drive_service.files().create(body=spreadsheet_metadata, fields='id').execute()
+        spreadsheet_id = spreadsheet['id']
+        print(f"New spreadsheet created. Spreadsheet ID: {spreadsheet_id}")
+
+        # Write the results to the spreadsheet.
+        sheet_service = build('sheets', 'v4', credentials=credentials_drive)
+        body = {
+            'values': [
+                ["Entire Period Analyzed", f"{global_start_date} to {global_end_date}"],
+                ["Global Final Balance", f"${total_balance:,.2f}"]
+            ]
+        }
+        sheet_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range="A1",  # Write to the top-left corner of the sheet.
+            valueInputOption="RAW",
+            body=body
+        ).execute()
+        print("Results written to the spreadsheet.")
+    except Exception as e:
+        print(f"Error creating or writing to spreadsheet: {e}")
+
+# Create the spreadsheet and write the results.
+create_spreadsheet_and_write_results(folder_id, global_start_date, global_end_date, total_balance)
