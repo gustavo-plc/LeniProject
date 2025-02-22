@@ -1,4 +1,4 @@
-# SECTION 1: CONNECTING TO SPREADSHEET AND DOWNLOADING GOOGLE DRIVE FILE TO LOCAL PC 
+# SECTION 1: CONNECTING TO SPREADSHEET AND DOWNLOADING ALL PDF FILES FROM A GOOGLE DRIVE FOLDER
 
 import os
 import gspread
@@ -32,45 +32,45 @@ print("SUCCESSFULLY CONNECTED TO SPREADSHEET!")
 credentials_drive = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, SCOPES_DRIVE)
 drive_service = build('drive', 'v3', credentials=credentials_drive)
 
-# Name of the file to search for and download from Google Drive.
-file_name = 'test.pdf'
-
-# === FUNCTION TO SEARCH AND GET THE FILE FROM GOOGLE DRIVE ===
-def get_file(file_name):
+# === FUNCTION TO LIST ALL PDF FILES IN A GOOGLE DRIVE FOLDER ===
+def list_pdf_files_in_folder(folder_id):
     """
-    Searches for a file in Google Drive by its name and returns its ID.
-    :param file_name: Name of the file to search for.
-    :return: File ID if found, otherwise None.
+    Lists all PDF files in a specific Google Drive folder.
+    :param folder_id: ID of the Google Drive folder.
+    :return: List of file IDs and names for all PDF files in the folder.
     """
-    query = f"name = '{file_name}'"
     try:
-        # Execute the search query to find files with the specified name.
-        results = drive_service.files().list(q=query).execute()
-        items = results.get('files', [])
-        
-        if not items:
-            print('File not found.')
-            return None
+        # Query to find all PDF files in the specified folder.
+        query = f"'{folder_id}' in parents and mimeType='application/pdf'"
+        results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+        files = results.get('files', [])
 
-        # Debug: List all files found with the specified name.
-        # This helps verify that the correct file is being retrieved.
-        for item in items:
-            print(f"Files found: {item['name']} (ID: {item['id']})")
-        
-        # Return the ID of the first file found (assuming there is only one file with the specified name).
-        return items[0]['id']
+        if not files:
+            print("No PDF files found in the folder.")
+            return []
+
+        # Print the list of PDF files found.
+        print("PDF files found in the folder:")
+        for file in files:
+            print(f"File Name: {file['name']}, File ID: {file['id']}")
+
+        return files
     except Exception as e:
-        print(f"Error on searching file: {e}")
-        return None
+        print(f"Error listing PDF files: {e}")
+        return []
 
-# === FUNCTION TO DOWNLOAD FILE FROM GOOGLE DRIVE ===
-def download_file(file_id, destination_path):
+# === FUNCTION TO DOWNLOAD A FILE FROM GOOGLE DRIVE ===
+def download_file(file_id, file_name, destination_folder):
     """
-    Downloads a file from Google Drive using its file ID and saves it to the specified local path.
+    Downloads a file from Google Drive using its file ID and saves it to the specified local folder.
     :param file_id: ID of the file to download.
-    :param destination_path: Local path where the file will be saved.
+    :param file_name: Name of the file to save.
+    :param destination_folder: Local folder where the file will be saved.
     """
     try:
+        # Define the full path for the downloaded file.
+        destination_path = os.path.join(destination_folder, file_name)
+
         # Request the file content from Google Drive.
         request = drive_service.files().get_media(fileId=file_id)
         with open(destination_path, 'wb') as fh:
@@ -79,30 +79,38 @@ def download_file(file_id, destination_path):
             done = False
             while not done:
                 status, done = downloader.next_chunk()
-                print(f"Download {int(status.progress() * 100)}% done.")
+                print(f"Downloading {file_name}: {int(status.progress() * 100)}% done.")
 
         print(f"File downloaded successfully: {destination_path}")
     except Exception as e:
-        print(f"Error on downloading file: {e}")
+        print(f"Error downloading file {file_name}: {e}")
 
-# === GETTING ID AND DOWNLOADING THE FILE ===
-# Define the local path where the downloaded file will be saved.
-file_destination = "C:/Users/Gustavo Cunha/Downloads/teste_baixado.pdf"
-# Get the file ID from Google Drive.
-file_id = get_file(file_name)
-if file_id:
-    # Download the file using its ID and save it to the specified destination.
-    download_file(file_id, file_destination)
+# === MAIN LOGIC TO DOWNLOAD ALL PDF FILES FROM A FOLDER ===
+# ID of the Google Drive folder containing the PDF files.
+folder_id = '1ngPkxMzO0SEdsqNn2yRuj_kxLjAazRmk'  # Replace with the actual folder ID.
+
+# Local directory where the downloaded PDF files will be saved.
+# This directory will also be used in SECTION 2 to process the PDF files.
+pdf_directory = "C:/Users/Gustavo Cunha/Downloads/PDFs"  # Replace with your desired local folder path.
+
+# Create the destination folder if it doesn't exist.
+if not os.path.exists(pdf_directory):
+    os.makedirs(pdf_directory)
+
+# List all PDF files in the Google Drive folder.
+pdf_files = list_pdf_files_in_folder(folder_id)
+
+# Download each PDF file to the local folder.
+for pdf_file in pdf_files:
+    file_id = pdf_file['id']
+    file_name = pdf_file['name']
+    download_file(file_id, file_name, pdf_directory)
 
 
 # SECTION 2: READING PDF FILES DOWNLOADED AND CALCULATING GLOBAL BALANCE
 
 import pdfplumber
 import re
-import os
-
-# Local directory where downloaded PDF files are stored.
-pdf_directory = "C:/Users/Gustavo Cunha/Downloads/"
 
 # Function to extract the statement balance and period from a single PDF file.
 def extract_balance_and_period(pdf_path):
